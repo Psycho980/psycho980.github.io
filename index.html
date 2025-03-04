@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comic Viewer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: #eee;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #333;
+            border-radius: 5px;
+        }
+        .title {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+        .image-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .image-container img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+        }
+        .chapter-info {
+            background-color: #333;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        #status {
+            padding: 10px;
+            background-color: #333;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        #jumpToPage {
+            padding: 8px;
+            width: 80px;
+            border-radius: 5px;
+            border: 1px solid #555;
+            background-color: #333;
+            color: white;
+        }
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100px;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #3498db;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title" id="seriesTitle">Comic Viewer</div>
+            <div class="controls">
+                <input type="number" id="jumpToPage" placeholder="Page #">
+                <button id="jumpBtn">Jump</button>
+                <button id="prevBtn">Previous</button>
+                <button id="nextBtn">Next</button>
+            </div>
+        </div>
+        
+        <div id="status">Initializing...</div>
+        
+        <div id="chapterInfo" class="chapter-info">
+            <div id="currentChapter">Chapter: Unknown</div>
+            <div id="pageInfo">Page: 0 / 0</div>
+        </div>
+        
+        <div id="imageContainer" class="image-container">
+            <div class="loading">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const baseUrls = [
+            "https://gg.asuracomic.net/storage/media/*/conversions/#-optimized.webp",
+            "https://gg.asuracomic.net/storage/media/*/conversions/#-kopya-optimized.webp",
+            "https://gg.asuracomic.net/storage/media/*/conversions/#-result_optimized.webp",
+            "https://gg.asuracomic.net/storage/media/*/conversions/#.jpg"
+        ];
+        
+        const chapter0Patterns = [
+            "00-optimized.webp",
+            "00-kopya-optimized.webp",
+            "00_result-optimized.webp",
+            "0000-copy-optimized.webp",
+            "00000-copy-optimized.webp",
+            "000-optimized.webp"
+        ];
+        
+        // List of series to match from OCR
+        const seriesList = [
+            "Martial Peak",
+            "Return of the Mount Hua Sect",
+            "Solo Leveling",
+            "The Beginning After the End",
+            "Omniscient Reader's Viewpoint"
+        ];
+        
+        // Global state
+        let currentStartNumber = 276559;
+        let currentImages = [];
+        let currentPage = 0;
+        let lastValidFrameCount = 0;
+        let firstValidPattern = null;
+        let isChapterStart = false;
+        let currentChapter = "Unknown";
+        let isLoading = false;
+        
+        // DOM elements
+        const statusElement = document.getElementById("status");
+        const imageContainer = document.getElementById("imageContainer");
+        const chapterInfoElement = document.getElementById("chapterInfo");
+        const currentChapterElement = document.getElementById("currentChapter");
+        const pageInfoElement = document.getElementById("pageInfo");
+        const seriesTitleElement = document.getElementById("seriesTitle");
+        const prevButton = document.getElementById("prevBtn");
+        const nextButton = document.getElementById("nextBtn");
+        const jumpToPageInput = document.getElementById("jumpToPage");
+        const jumpBtn = document.getElementById("jumpBtn");
+        
+        // Mock function to simulate OCR - in a real app you would need Tesseract.js or a server-side OCR
+        function mockOCR(imageUrl) {
+            // This is a placeholder - in a real app this would use actual OCR
+            const randomSeriesIndex = Math.floor(Math.random() * seriesList.length);
+            const randomChapterNum = Math.floor(Math.random() * 300) + 1;
+            return {
+                series: seriesList[randomSeriesIndex],
+                chapter: randomChapterNum
+            };
+        }
+        
+        // Function to check if an image URL exists
+        async function imageExists(url) {
+            return new Promise(resolve => {
+                const img = new Image();
+                img.onload = () => resolve(true);
+                img.onerror = () => resolve(false);
+                img.src = url;
+            });
+        }
+        
+        // Function to find valid URLs for a given start number
+        async function findValidImagesForStartNumber(startNumber) {
+            statusElement.textContent = `Searching for images starting at ${startNumber}...`;
+            isLoading = true;
+            
+            const validImages = [];
+            firstValidPattern = null;
+            isChapterStart = false;
+            
+            // Frame counter
+            let frameCounter = 1;
+            let validFrameFound = false;
+            
+            while (true) {
+                const frameNumber = String(frameCounter).padStart(2, '0');
+                let frameValid = false;
+                
+                // Check each URL pattern
+                for (const baseUrl of baseUrls) {
+                    const url = baseUrl
+                        .replace('*', String(startNumber + frameCounter - 1))
+                        .replace('#', frameNumber);
+                    
+                    const exists = await imageExists(url);
+                    
+                    if (exists) {
+                        validImages.push(url);
+                        validFrameFound = true;
+                        frameValid = true;
+                        
+                        // Store the first valid pattern if not already found
+                        if (!firstValidPattern) {
+                            firstValidPattern = url.split('/').pop();
+                        }
+                        
+                        break; // Found a valid URL for this frame, move to next frame
+                    }
+                }
+                
+                // If we found a valid frame 01 pattern, check for chapter title page (00)
+                if (frameCounter === 1 && frameValid && !isChapterStart) {
+                    // Check for chapter start (00) patterns
+                    for (const pattern of chapter0Patterns) {
+                        const chapterTitleUrl = baseUrls[0]
+                            .replace('*', String(startNumber))
+                            .replace('#-optimized.webp', pattern);
+                        
+                        const exists = await imageExists(chapterTitleUrl);
+                        
+                        if (exists) {
+                            // Insert the chapter title page at the beginning
+                            validImages.unshift(chapterTitleUrl);
+                            isChapterStart = true;
+                            
+                            // Here we would perform OCR and extract chapter info
+                            // For demo, we'll use mock data
+                            const ocrResult = mockOCR(chapterTitleUrl);
+                            currentChapter = `${ocrResult.series} - Chapter ${ocrResult.chapter}`;
+                            seriesTitleElement.textContent = ocrResult.series;
+                            
+                            break;
+                        }
+                    }
+                }
+                
+                // If no valid frame found, stop
+                if (!frameValid) {
+                    break;
+                }
+                
+                frameCounter++;
+            }
+            
+            // Update the last valid frame count
+            lastValidFrameCount = validImages.length;
+            
+            isLoading = false;
+            return validImages;
+        }
+        
+        // Function to display an image
+        function displayImage(imageUrl, pageNum, totalPages) {
+            imageContainer.innerHTML = `<img src="${imageUrl}" alt="Comic page ${pageNum}">`;
+            pageInfoElement.textContent = `Page: ${pageNum} / ${totalPages}`;
+            currentChapterElement.textContent = `Chapter: ${currentChapter}`;
+            
+            // Update button states
+            prevButton.disabled = pageNum <= 1;
+            nextButton.disabled = pageNum >= totalPages;
+        }
+        
+        // Function to display a loading spinner
+        function showLoadingSpinner() {
+            imageContainer.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                </div>
+            `;
+        }
+        
+        // Function to load and display a specific page
+        async function loadPage(pageIndex) {
+            if (pageIndex < 0 || pageIndex >= currentImages.length || isLoading) {
+                return;
+            }
+            
+            currentPage = pageIndex;
+            displayImage(currentImages[pageIndex], pageIndex + 1, currentImages.length);
+        }
+        
+        // Function to load the next batch of images
+        async function loadNextBatch() {
+            const nextStartNumber = currentStartNumber + lastValidFrameCount;
+            currentStartNumber = nextStartNumber;
+            
+            showLoadingSpinner();
+            currentImages = await findValidImagesForStartNumber(nextStartNumber);
+            
+            if (currentImages.length > 0) {
+                statusElement.textContent = `Found ${currentImages.length} images. Start number: ${nextStartNumber}`;
+                currentPage = 0;
+                loadPage(currentPage);
+            } else {
+                statusElement.textContent = `No images found starting at ${nextStartNumber}`;
+                imageContainer.innerHTML = "<p>No images found</p>";
+            }
+        }
+        
+        // Initialize the application
+        async function initialize() {
+            showLoadingSpinner();
+            currentImages = await findValidImagesForStartNumber(currentStartNumber);
+            
+            if (currentImages.length > 0) {
+                statusElement.textContent = `Found ${currentImages.length} images. Start number: ${currentStartNumber}`;
+                loadPage(0);
+            } else {
+                statusElement.textContent = `No images found starting at ${currentStartNumber}`;
+                imageContainer.innerHTML = "<p>No images found</p>";
+            }
+        }
+        
+        // Event listeners
+        prevButton.addEventListener("click", () => {
+            loadPage(currentPage - 1);
+        });
+        
+        nextButton.addEventListener("click", () => {
+            if (currentPage < currentImages.length - 1) {
+                loadPage(currentPage + 1);
+            } else {
+                // We've reached the end of the current batch, load the next one
+                loadNextBatch();
+            }
+        });
+        
+        jumpBtn.addEventListener("click", () => {
+            const pageNum = parseInt(jumpToPageInput.value);
+            if (!isNaN(pageNum) && pageNum > 0 && pageNum <= currentImages.length) {
+                loadPage(pageNum - 1); // Convert to 0-based index
+            } else {
+                statusElement.textContent = `Invalid page number. Please enter a number between 1 and ${currentImages.length}`;
+            }
+        });
+        
+        // Initialize the app
+        initialize();
+    </script>
+</body>
+</html>
