@@ -192,12 +192,12 @@
         let currentStartNumber = 276559;
         let currentImages = [];
         let currentPage = 0;
-        let lastValidFrameCount = 0;
         let firstValidPattern = null;
         let isChapterStart = false;
         let currentChapter = "Unknown";
         let isLoading = false;
         let validStartNumber = null;
+        let validFrameCount = 0;
         
         // DOM elements
         const statusElement = document.getElementById("status");
@@ -245,7 +245,7 @@
             });
         }
         
-        // Function to find the first valid start number, similar to the Python code
+        // Function to find the first valid start number
         async function findValidStartNumber(startNumber) {
             let number = startNumber;
             validStartNumber = null;
@@ -267,6 +267,11 @@
                         validStartNumber = number;
                         addLog(`✅ Found valid start number: ${validStartNumber}`);
                         statusElement.textContent = `Found valid start number: ${validStartNumber}`;
+                        
+                        // Store the first valid pattern
+                        firstValidPattern = url.split('/').pop();
+                        addLog(`First valid pattern: ${firstValidPattern}`);
+                        
                         found = true;
                         break;
                     }
@@ -287,87 +292,95 @@
             return validStartNumber;
         }
         
+        // Function to check for chapter title page (00)
+        async function checkForChapterTitlePage(startNumber) {
+            addLog(`Checking for chapter title pages (00 patterns) at number ${startNumber}...`);
+            
+            // Check for chapter title page BEFORE the valid start number
+            for (const pattern of chapter0Patterns) {
+                const chapterTitleUrl = baseUrls[0]
+                    .replace('*', String(startNumber))
+                    .replace('#-optimized.webp', pattern);
+                
+                addLog(`Checking title page: ${chapterTitleUrl}`);
+                const exists = await imageExists(chapterTitleUrl);
+                
+                if (exists) {
+                    addLog(`✅ Found chapter title page: ${pattern}`);
+                    
+                    // Here we would perform OCR and extract chapter info
+                    // For demo, we'll use mock data
+                    const ocrResult = mockOCR(chapterTitleUrl);
+                    currentChapter = `${ocrResult.series} - Chapter ${ocrResult.chapter}`;
+                    seriesTitleElement.textContent = ocrResult.series;
+                    
+                    return chapterTitleUrl;
+                }
+            }
+            
+            return null;
+        }
+        
         // Function to find valid frames after finding a valid start number
         async function findValidFrames(startNumber) {
             validFrameCount = 0;
-            firstValidPattern = null;
-            let validImages = [];
+            const validImages = [];
             
             statusElement.textContent = `Found valid start number ${startNumber}. Counting frames...`;
             addLog(`Found valid start: ${startNumber}. Checking for valid frames...`);
             
-            // Step 2: Count valid frames (increasing frame number)
+            // First, check for chapter title page (00)
+            const titlePageUrl = await checkForChapterTitlePage(startNumber);
+            if (titlePageUrl) {
+                validImages.push(titlePageUrl);
+            }
+            
+            // Step 2: Count valid frames (increasing frame number AND start number)
+            let frameOffset = 0;
+            
             while (true) {
-                const frameNumber = String(validFrameCount + 1).padStart(2, '0');
+                const frameNumber = String(frameOffset + 1).padStart(2, '0');  // 01, 02, 03, etc.
                 let frameValid = false;
                 let validUrl = null;
                 
+                // This is the key difference from the previous version: 
+                // We're now updating both the frame number AND the start number
+                // This matches how your original Python script works
                 for (const baseUrl of baseUrls) {
                     const url = baseUrl
-                        .replace('*', String(startNumber))
+                        .replace('*', String(startNumber + frameOffset))
                         .replace('#', frameNumber);
                     
+                    addLog(`Checking frame: ${url}`);
                     const exists = await imageExists(url);
                     
                     if (exists) {
                         validUrl = url;
                         frameValid = true;
-                        
-                        // If it's the first valid pattern, store it
-                        if (validFrameCount === 0) {
-                            firstValidPattern = url.split('/').pop();
-                            addLog(`First valid pattern: ${firstValidPattern}`);
-                        }
-                        
+                        addLog(`✅ Found valid frame ${frameNumber}`);
                         break;
                     }
                 }
                 
                 // If no valid frame found, stop
                 if (!frameValid) {
+                    addLog(`No valid frame found for ${frameNumber}. Stopping search.`);
                     break;
                 }
                 
                 // Add to valid images
                 validImages.push(validUrl);
                 validFrameCount++;
+                frameOffset++;
                 
                 // Update status periodically
                 if (validFrameCount % 5 === 0) {
                     statusElement.textContent = `Found ${validFrameCount} valid frames...`;
-                    addLog(`Found ${validFrameCount} valid frames so far`);
                 }
             }
             
             addLog(`Total valid frames: ${validFrameCount}`);
             statusElement.textContent = `Found ${validFrameCount} valid frames for start number ${startNumber}`;
-            
-            // Check for chapter title page (00) if we found valid frames
-            if (validFrameCount > 0 && firstValidPattern) {
-                addLog(`Checking for chapter title pages (00 patterns)...`);
-                
-                for (const pattern of chapter0Patterns) {
-                    const chapterTitleUrl = baseUrls[0]
-                        .replace('*', String(startNumber))
-                        .replace('#-optimized.webp', pattern);
-                    
-                    addLog(`Checking: ${chapterTitleUrl}`);
-                    const exists = await imageExists(chapterTitleUrl);
-                    
-                    if (exists) {
-                        validImages.unshift(chapterTitleUrl);
-                        addLog(`✅ Found chapter title page: ${pattern}`);
-                        
-                        // Here we would perform OCR and extract chapter info
-                        // For demo, we'll use mock data
-                        const ocrResult = mockOCR(chapterTitleUrl);
-                        currentChapter = `${ocrResult.series} - Chapter ${ocrResult.chapter}`;
-                        seriesTitleElement.textContent = ocrResult.series;
-                        
-                        break;
-                    }
-                }
-            }
             
             return {
                 validStartNumber: startNumber,
@@ -382,7 +395,7 @@
             imageContainer.innerHTML = `<img src="${imageUrl}" alt="Comic page ${pageNum}">`;
             pageInfoElement.textContent = `Page: ${pageNum} / ${totalPages}`;
             currentChapterElement.textContent = `Chapter: ${currentChapter}`;
-            startInfoElement.textContent = `Start Number: ${validStartNumber}`;
+            startInfoElement.textContent = `Start Number: ${validStartNumber}, Frames: ${validFrameCount}`;
             
             // Update button states
             prevButton.disabled = pageNum <= 1;
@@ -425,6 +438,7 @@
                     const result = await findValidFrames(nextValidStart);
                     currentImages = result.images;
                     validStartNumber = result.validStartNumber;
+                    validFrameCount = result.validFrameCount;
                     
                     if (currentImages.length > 0) {
                         addLog(`Successfully loaded next batch. Found ${currentImages.length} images.`);
@@ -459,6 +473,7 @@
                     const result = await findValidFrames(validStart);
                     currentImages = result.images;
                     validStartNumber = result.validStartNumber;
+                    validFrameCount = result.validFrameCount;
                     
                     if (currentImages.length > 0) {
                         addLog(`Search complete. Found ${currentImages.length} images.`);
