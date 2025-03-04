@@ -294,12 +294,12 @@
         
         // Function to check for chapter title page (00)
         async function checkForChapterTitlePage(startNumber) {
-            addLog(`Checking for chapter title pages (00 patterns) at number ${startNumber}...`);
+            addLog(`Checking for chapter title pages (00 patterns) at number ${startNumber}-1...`);
             
             // Check for chapter title page BEFORE the valid start number
             for (const pattern of chapter0Patterns) {
                 const chapterTitleUrl = baseUrls[0]
-                    .replace('*', String(startNumber))
+                    .replace('*', String(startNumber)-1)
                     .replace('#-optimized.webp', pattern);
                 
                 addLog(`Checking title page: ${chapterTitleUrl}`);
