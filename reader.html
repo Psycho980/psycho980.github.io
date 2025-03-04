@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reader</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white">
+    <div class="container mx-auto p-4">
+        <h1 class="text-xl font-bold mb-4">Reader</h1>
+        <div id="image-container" class="grid gap-4">
+            <!-- Images will be added here dynamically -->
+        </div>
+    </div>
+
+    <script>
+        async function findValidStartNumber(startNumber) {
+            for (let i = 0; i < 10; i++) {
+                let testNumber = startNumber + i;
+                let imageUrl = `https://example.com/manga/${testNumber}/00.jpg`;
+                if (await isValidImage(imageUrl)) {
+                    return testNumber;
+                }
+            }
+            return null;
+        }
+
+        async function findValidFrames(startNumber) {
+            let validFrames = [];
+            for (let i = 0; i < 50; i++) {
+                let imageUrl = `https://example.com/manga/${startNumber}/${i.toString().padStart(2, '0')}.jpg`;
+                if (await isValidImage(imageUrl)) {
+                    validFrames.push(imageUrl);
+                } else {
+                    break;
+                }
+            }
+            return validFrames;
+        }
+
+        async function isValidImage(url) {
+            try {
+                const response = await fetch(url, { method: 'HEAD' });
+                return response.ok;
+            } catch (error) {
+                return false;
+            }
+        }
+
+        async function checkForChapterTitlePage(startNumber) {
+            let titlePageUrl = `https://example.com/manga/${startNumber}/00.jpg`;
+            if (await isValidImage(titlePageUrl)) {
+                return titlePageUrl;
+            }
+            return null;
+        }
+
+        function mockOCR(imageUrl) {
+            return { series: "Solo Leveling", chapter: 201 };
+        }
+
+        async function loadManga() {
+            const startNumber = await findValidStartNumber(276559);
+            if (!startNumber) return;
+
+            const titlePage = await checkForChapterTitlePage(startNumber);
+            if (!titlePage) return;
+
+            const ocrResult = mockOCR(titlePage);
+            const seriesList = ["Martial Peak", "Return of the Mount Hua Sect", "Solo Leveling", "The Beginning After the End", "Omniscient Reader's Viewpoint"];
+            if (!seriesList.includes(ocrResult.series)) return;
+
+            const frames = await findValidFrames(startNumber);
+            displayImages(frames);
+        }
+
+        function displayImages(imageUrls) {
+            const container = document.getElementById("image-container");
+            imageUrls.forEach(url => {
+                let img = document.createElement("img");
+                img.src = url;
+                img.className = "w-full h-auto";
+                container.appendChild(img);
+            });
+        }
+
+        document.addEventListener("DOMContentLoaded", loadManga);
+    </script>
+</body>
+</html>
