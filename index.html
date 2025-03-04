@@ -100,8 +100,31 @@
             border-top-color: #3498db;
             animation: spin 1s ease-in-out infinite;
         }
+        .log-container {
+            background-color: #222;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .log-entry {
+            margin-bottom: 5px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 5px;
+        }
         @keyframes spin {
             to { transform: rotate(360deg); }
+        }
+        #startNumberInput {
+            padding: 8px;
+            width: 100px;
+            border-radius: 5px;
+            border: 1px solid #555;
+            background-color: #333;
+            color: white;
         }
     </style>
 </head>
@@ -110,6 +133,8 @@
         <div class="header">
             <div class="title" id="seriesTitle">Comic Viewer</div>
             <div class="controls">
+                <input type="number" id="startNumberInput" placeholder="Start #" value="276559">
+                <button id="searchBtn">Search</button>
                 <input type="number" id="jumpToPage" placeholder="Page #">
                 <button id="jumpBtn">Jump</button>
                 <button id="prevBtn">Previous</button>
@@ -117,17 +142,22 @@
             </div>
         </div>
         
-        <div id="status">Initializing...</div>
+        <div id="status">Ready to search. Enter a start number or use the default.</div>
         
         <div id="chapterInfo" class="chapter-info">
             <div id="currentChapter">Chapter: Unknown</div>
             <div id="pageInfo">Page: 0 / 0</div>
+            <div id="startInfo">Start Number: 0</div>
         </div>
         
         <div id="imageContainer" class="image-container">
             <div class="loading">
                 <div class="spinner"></div>
             </div>
+        </div>
+        
+        <div id="logContainer" class="log-container">
+            <div class="log-entry">System initialized. Ready to search.</div>
         </div>
     </div>
 
@@ -167,6 +197,7 @@
         let isChapterStart = false;
         let currentChapter = "Unknown";
         let isLoading = false;
+        let validStartNumber = null;
         
         // DOM elements
         const statusElement = document.getElementById("status");
@@ -174,11 +205,24 @@
         const chapterInfoElement = document.getElementById("chapterInfo");
         const currentChapterElement = document.getElementById("currentChapter");
         const pageInfoElement = document.getElementById("pageInfo");
+        const startInfoElement = document.getElementById("startInfo");
         const seriesTitleElement = document.getElementById("seriesTitle");
         const prevButton = document.getElementById("prevBtn");
         const nextButton = document.getElementById("nextBtn");
         const jumpToPageInput = document.getElementById("jumpToPage");
         const jumpBtn = document.getElementById("jumpBtn");
+        const startNumberInput = document.getElementById("startNumberInput");
+        const searchBtn = document.getElementById("searchBtn");
+        const logContainer = document.getElementById("logContainer");
+        
+        // Function to add log messages
+        function addLog(message) {
+            const logEntry = document.createElement("div");
+            logEntry.className = "log-entry";
+            logEntry.textContent = message;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
         
         // Mock function to simulate OCR - in a real app you would need Tesseract.js or a server-side OCR
         function mockOCR(imageUrl) {
@@ -201,68 +245,81 @@
             });
         }
         
-        // Function to find valid URLs for a given start number
-        async function findValidImagesForStartNumber(startNumber) {
-            statusElement.textContent = `Searching for images starting at ${startNumber}...`;
-            isLoading = true;
+        // Function to find the first valid start number, similar to the Python code
+        async function findValidStartNumber(startNumber) {
+            let number = startNumber;
+            validStartNumber = null;
             
-            const validImages = [];
-            firstValidPattern = null;
-            isChapterStart = false;
+            statusElement.textContent = `Searching for valid start number from ${number}...`;
+            addLog(`Starting search from number ${number}`);
             
-            // Frame counter
-            let frameCounter = 1;
-            let validFrameFound = false;
-            
+            // Step 1: Find the first valid start number
             while (true) {
-                const frameNumber = String(frameCounter).padStart(2, '0');
-                let frameValid = false;
+                let found = false;
                 
-                // Check each URL pattern
+                for (const baseUrl of baseUrls) {
+                    const url = baseUrl.replace('*', String(number)).replace('#', '01');
+                    addLog(`Checking: ${url}`);
+                    
+                    const exists = await imageExists(url);
+                    
+                    if (exists) {
+                        validStartNumber = number;
+                        addLog(`✅ Found valid start number: ${validStartNumber}`);
+                        statusElement.textContent = `Found valid start number: ${validStartNumber}`;
+                        found = true;
+                        break;
+                    }
+                }
+                
+                if (found) {
+                    break;
+                }
+                
+                // Update status periodically
+                if (number % 10 === 0) {
+                    statusElement.textContent = `Searching... Checked up to ${number}`;
+                }
+                
+                number++;
+            }
+            
+            return validStartNumber;
+        }
+        
+        // Function to find valid frames after finding a valid start number
+        async function findValidFrames(startNumber) {
+            validFrameCount = 0;
+            firstValidPattern = null;
+            let validImages = [];
+            
+            statusElement.textContent = `Found valid start number ${startNumber}. Counting frames...`;
+            addLog(`Found valid start: ${startNumber}. Checking for valid frames...`);
+            
+            // Step 2: Count valid frames (increasing frame number)
+            while (true) {
+                const frameNumber = String(validFrameCount + 1).padStart(2, '0');
+                let frameValid = false;
+                let validUrl = null;
+                
                 for (const baseUrl of baseUrls) {
                     const url = baseUrl
-                        .replace('*', String(startNumber + frameCounter - 1))
+                        .replace('*', String(startNumber))
                         .replace('#', frameNumber);
                     
                     const exists = await imageExists(url);
                     
                     if (exists) {
-                        validImages.push(url);
-                        validFrameFound = true;
+                        validUrl = url;
                         frameValid = true;
                         
-                        // Store the first valid pattern if not already found
-                        if (!firstValidPattern) {
+                        // If it's the first valid pattern, store it
+                        if (validFrameCount === 0) {
                             firstValidPattern = url.split('/').pop();
+                            addLog(`First valid pattern: ${firstValidPattern}`);
                         }
                         
-                        break; // Found a valid URL for this frame, move to next frame
-                    }
-                }
-                
-                // If we found a valid frame 01 pattern, check for chapter title page (00)
-                if (frameCounter === 1 && frameValid && !isChapterStart) {
-                    // Check for chapter start (00) patterns
-                    for (const pattern of chapter0Patterns) {
-                        const chapterTitleUrl = baseUrls[0]
-                            .replace('*', String(startNumber))
-                            .replace('#-optimized.webp', pattern);
-                        
-                        const exists = await imageExists(chapterTitleUrl);
-                        
-                        if (exists) {
-                            // Insert the chapter title page at the beginning
-                            validImages.unshift(chapterTitleUrl);
-                            isChapterStart = true;
-                            
-                            // Here we would perform OCR and extract chapter info
-                            // For demo, we'll use mock data
-                            const ocrResult = mockOCR(chapterTitleUrl);
-                            currentChapter = `${ocrResult.series} - Chapter ${ocrResult.chapter}`;
-                            seriesTitleElement.textContent = ocrResult.series;
-                            
-                            break;
-                        }
+                        break;
                     }
                 }
                 
@@ -271,14 +328,53 @@
                     break;
                 }
                 
-                frameCounter++;
+                // Add to valid images
+                validImages.push(validUrl);
+                validFrameCount++;
+                
+                // Update status periodically
+                if (validFrameCount % 5 === 0) {
+                    statusElement.textContent = `Found ${validFrameCount} valid frames...`;
+                    addLog(`Found ${validFrameCount} valid frames so far`);
+                }
             }
             
-            // Update the last valid frame count
-            lastValidFrameCount = validImages.length;
+            addLog(`Total valid frames: ${validFrameCount}`);
+            statusElement.textContent = `Found ${validFrameCount} valid frames for start number ${startNumber}`;
             
-            isLoading = false;
-            return validImages;
+            // Check for chapter title page (00) if we found valid frames
+            if (validFrameCount > 0 && firstValidPattern) {
+                addLog(`Checking for chapter title pages (00 patterns)...`);
+                
+                for (const pattern of chapter0Patterns) {
+                    const chapterTitleUrl = baseUrls[0]
+                        .replace('*', String(startNumber))
+                        .replace('#-optimized.webp', pattern);
+                    
+                    addLog(`Checking: ${chapterTitleUrl}`);
+                    const exists = await imageExists(chapterTitleUrl);
+                    
+                    if (exists) {
+                        validImages.unshift(chapterTitleUrl);
+                        addLog(`✅ Found chapter title page: ${pattern}`);
+                        
+                        // Here we would perform OCR and extract chapter info
+                        // For demo, we'll use mock data
+                        const ocrResult = mockOCR(chapterTitleUrl);
+                        currentChapter = `${ocrResult.series} - Chapter ${ocrResult.chapter}`;
+                        seriesTitleElement.textContent = ocrResult.series;
+                        
+                        break;
+                    }
+                }
+            }
+            
+            return {
+                validStartNumber: startNumber,
+                validFrameCount: validFrameCount,
+                firstValidPattern: firstValidPattern,
+                images: validImages
+            };
         }
         
         // Function to display an image
@@ -286,6 +382,7 @@
             imageContainer.innerHTML = `<img src="${imageUrl}" alt="Comic page ${pageNum}">`;
             pageInfoElement.textContent = `Page: ${pageNum} / ${totalPages}`;
             currentChapterElement.textContent = `Chapter: ${currentChapter}`;
+            startInfoElement.textContent = `Start Number: ${validStartNumber}`;
             
             // Update button states
             prevButton.disabled = pageNum <= 1;
@@ -313,37 +410,85 @@
         
         // Function to load the next batch of images
         async function loadNextBatch() {
-            const nextStartNumber = currentStartNumber + lastValidFrameCount;
-            currentStartNumber = nextStartNumber;
+            const nextStartNumber = validStartNumber + validFrameCount;
+            addLog(`End of current batch. Starting search for next batch from ${nextStartNumber}`);
             
             showLoadingSpinner();
-            currentImages = await findValidImagesForStartNumber(nextStartNumber);
+            isLoading = true;
             
-            if (currentImages.length > 0) {
-                statusElement.textContent = `Found ${currentImages.length} images. Start number: ${nextStartNumber}`;
-                currentPage = 0;
-                loadPage(currentPage);
-            } else {
-                statusElement.textContent = `No images found starting at ${nextStartNumber}`;
-                imageContainer.innerHTML = "<p>No images found</p>";
+            try {
+                // Find the next valid start number
+                const nextValidStart = await findValidStartNumber(nextStartNumber);
+                
+                if (nextValidStart) {
+                    // Find valid frames for this start number
+                    const result = await findValidFrames(nextValidStart);
+                    currentImages = result.images;
+                    validStartNumber = result.validStartNumber;
+                    
+                    if (currentImages.length > 0) {
+                        addLog(`Successfully loaded next batch. Found ${currentImages.length} images.`);
+                        currentPage = 0;
+                        loadPage(currentPage);
+                    } else {
+                        addLog(`No images found in next batch.`);
+                        imageContainer.innerHTML = "<p>No images found in next batch</p>";
+                    }
+                }
+            } catch (error) {
+                addLog(`Error loading next batch: ${error.message}`);
+                statusElement.textContent = `Error: ${error.message}`;
+            } finally {
+                isLoading = false;
             }
         }
         
-        // Initialize the application
-        async function initialize() {
+        // Main search function
+        async function performSearch(startNumber) {
             showLoadingSpinner();
-            currentImages = await findValidImagesForStartNumber(currentStartNumber);
+            statusElement.textContent = "Searching...";
+            isLoading = true;
+            currentImages = [];
             
-            if (currentImages.length > 0) {
-                statusElement.textContent = `Found ${currentImages.length} images. Start number: ${currentStartNumber}`;
-                loadPage(0);
-            } else {
-                statusElement.textContent = `No images found starting at ${currentStartNumber}`;
-                imageContainer.innerHTML = "<p>No images found</p>";
+            try {
+                // Step 1: Find the first valid start number
+                const validStart = await findValidStartNumber(startNumber);
+                
+                if (validStart) {
+                    // Step 2: Find valid frames for this start number
+                    const result = await findValidFrames(validStart);
+                    currentImages = result.images;
+                    validStartNumber = result.validStartNumber;
+                    
+                    if (currentImages.length > 0) {
+                        addLog(`Search complete. Found ${currentImages.length} images.`);
+                        currentPage = 0;
+                        loadPage(currentPage);
+                    } else {
+                        addLog(`No images found.`);
+                        imageContainer.innerHTML = "<p>No images found</p>";
+                    }
+                }
+            } catch (error) {
+                addLog(`Error: ${error.message}`);
+                statusElement.textContent = `Error: ${error.message}`;
+                imageContainer.innerHTML = `<p>Error: ${error.message}</p>`;
+            } finally {
+                isLoading = false;
             }
         }
         
         // Event listeners
+        searchBtn.addEventListener("click", () => {
+            const startNum = parseInt(startNumberInput.value);
+            if (!isNaN(startNum) && startNum > 0) {
+                currentStartNumber = startNum;
+                performSearch(startNum);
+            } else {
+                statusElement.textContent = "Please enter a valid start number";
+            }
+        });
+        
         prevButton.addEventListener("click", () => {
             loadPage(currentPage - 1);
         });
@@ -366,8 +511,8 @@
             }
         });
         
-        // Initialize the app
-        initialize();
+        // Initialize with event listeners but don't start search automatically
+        addLog("System initialized. Click 'Search' to begin.");
     </script>
 </body>
 </html>
