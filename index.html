@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Comic Image Viewer</title>
+    <title>Webtoon Comic Viewer</title>
     <script src="https://cdn.jsdelivr.net/npm/react@17.0.2/umd/react.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/react-dom@17.0.2/umd/react-dom.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/babel-standalone@6.26.0/babel.min.js"></script>
@@ -31,10 +31,11 @@
             line-height: 1.6;
         }
 
-        #root {
+        .comic-container {
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
+            background-color: var(--bg-primary);
         }
 
         .search-container {
@@ -79,15 +80,22 @@
             transform: scale(1.05);
         }
 
-        .image-grid {
+        .webtoon-grid {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 15px;
+            gap: 20px;
             padding: 20px 0;
         }
 
-        .image-grid img {
+        .webtoon-page {
+            width: 100%;
+            max-width: 600px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .webtoon-page img {
             max-width: 100%;
             height: auto;
             object-fit: contain;
@@ -96,7 +104,7 @@
             transition: transform 0.3s ease;
         }
 
-        .image-grid img:hover {
+        .webtoon-page img:hover {
             transform: scale(1.02);
         }
 
@@ -119,7 +127,7 @@
         }
 
         @media (max-width: 600px) {
-            #root {
+            .comic-container {
                 padding: 10px;
             }
 
@@ -132,204 +140,99 @@
                 width: 100%;
                 padding: 12px;
             }
-
-.progress-bar {
-    width: 100%;
-    background-color: var(--bg-secondary);
-    border-radius: 4px;
-    margin-top: 10px;
-    overflow: hidden;
-}
-
-.progress {
-    height: 5px;
-    background-color: var(--accent-color);
-    transition: width 0.5s ease;
-}
-
         }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
-<script type="text/babel">
-const { useState, useCallback } = React;
+    <script type="text/babel">
+        function ComicViewer() {
+            const [comicUrls, setComicUrls] = React.useState([]);
+            const [loading, setLoading] = React.useState(false);
+            const [error, setError] = React.useState(null);
+            const [startNumber, setStartNumber] = React.useState('');
 
-const ComicViewer = () => {
-    const [startNumber, setStartNumber] = useState('278005');
-    const [images, setImages] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [currentSearchRange, setCurrentSearchRange] = useState(null);
-    const [searchProgress, setSearchProgress] = useState(0);
+            const fetchComicImages = async () => {
+                // Base URL patterns (you can customize these)
+                const baseUrls = [
+                    `https://gg.asuracomic.net/storage/media/${startNumber}/conversions/#-optimized.webp`,
+                    `https://gg.asuracomic.net/storage/media/${startNumber}/conversions/#-kopya-optimized.webp`,
+                    `https://gg.asuracomic.net/storage/media/${startNumber}/conversions/#.jpg`
+                ];
 
-    // Proxy URL for CORS
-    const PROXY_URL = 'https://scythe-elfin-basilisk.glitch.me/proxy';
+                setLoading(true);
+                setError(null);
 
-    const baseUrls = [
-        "https://gg.asuracomic.net/storage/media/*/conversions/#-optimized.webp",
-        "https://gg.asuracomic.net/storage/media/*/conversions/#-kopya-optimized.webp",
-        "https://gg.asuracomic.net/storage/media/*/conversions/#-result_optimized.webp",
-        "https://gg.asuracomic.net/storage/media/*/conversions/#.jpg"
-    ];
+                try {
+                    const urls = [];
+                    let frameNumber = 1;
 
-    const zeroPageBaseUrls = [
-        "https://gg.asuracomic.net/storage/media/*/conversions/00-optimized.webp",
-        "https://gg.asuracomic.net/storage/media/*/conversions/00-kopya-optimized.webp", 
-        "https://gg.asuracomic.net/storage/media/*/conversions/00-result_optimized.webp",
-        "https://gg.asuracomic.net/storage/media/*/conversions/00.jpg",
-        "https://gg.asuracomic.net/storage/media/*/conversions/0000-copy-optimized.webp", 
-        "https://gg.asuracomic.net/storage/media/*/conversions/00000-copy-optimized.webp", 
-        "https://gg.asuracomic.net/storage/media/*/conversions/000-optimized.webp"
-    ];
+                    while (true) {
+                        const frameUrls = baseUrls.map(url => 
+                            url.replace('#', frameNumber.toString().padStart(2, '0'))
+                        );
 
-    const checkUrl = async (url) => {
-        try {
-            const proxyUrl = `${PROXY_URL}?url=${encodeURIComponent(url)}`;
-            const response = await axios.get(proxyUrl, { 
-                timeout: 5000,
-                validateStatus: () => true // Always resolve the promise
-            });
-            return response.status === 200;
-        } catch (error) {
-            console.error('URL check failed:', url, error);
-            return false;
-        }
-    };
+                        // Try each URL pattern
+                        let validUrl = null;
+                        for (const testUrl of frameUrls) {
+                            try {
+                                const response = await axios.head(testUrl);
+                                if (response.status === 200) {
+                                    validUrl = testUrl;
+                                    break;
+                                }
+                            } catch (err) {
+                                // URL not valid, continue to next
+                            }
+                        }
 
-    const findValidUrls = async () => {
-        setLoading(true);
-        setError(null);
-        setImages([]);
-        setSearchProgress(0);
+                        if (!validUrl) break;
 
-        const initialNumber = parseInt(startNumber);
-        let allValidUrls = [];
-        let noImagesFoundCount = 0;
-        let currentNumber = initialNumber;
-        const MAX_NO_IMAGE_SEARCHES = 100;
-
-        while (noImagesFoundCount < MAX_NO_IMAGE_SEARCHES) {
-            setCurrentSearchRange(`Searching: ${currentNumber} - ${currentNumber + 10}`);
-            setSearchProgress(Math.floor((noImagesFoundCount / MAX_NO_IMAGE_SEARCHES) * 100));
-            
-            try {
-                const validUrls = [];
-                let zeroPageUrls = [];
-
-                // Check zero page URLs
-                for (const zeroUrl of zeroPageBaseUrls) {
-                    const checkedUrl = zeroUrl.replace('*', currentNumber - 1);
-                    const isValid = await checkUrl(checkedUrl);
-                    if (isValid) {
-                        zeroPageUrls.push(checkedUrl);
+                        urls.push(validUrl);
+                        frameNumber++;
                     }
+
+                    setComicUrls(urls);
+                    setLoading(false);
+                } catch (err) {
+                    setError('Failed to fetch comic images');
+                    setLoading(false);
                 }
+            };
 
-                // Find valid frames
-                let frameNumber = 1;
-                while (true) {
-                    const frameUrls = baseUrls.map(url => 
-                        url.replace('*', currentNumber + frameNumber - 1)
-                           .replace('#', frameNumber.toString().padStart(2, '0'))
-                    );
+            return (
+                <div className="comic-container">
+                    <div className="search-container">
+                        <input 
+                            type="text" 
+                            placeholder="Enter comic start number" 
+                            value={startNumber}
+                            onChange={(e) => setStartNumber(e.target.value)}
+                        />
+                        <button onClick={fetchComicImages}>Load Comic</button>
+                    </div>
 
-                    const validFrameUrls = await Promise.all(
-                        frameUrls.map(async (url) => {
-                            const isValid = await checkUrl(url);
-                            return isValid ? url : null;
-                        })
-                    );
+                    {loading && <div className="loading">Loading comic pages...</div>}
+                    
+                    {error && <div className="error">{error}</div>}
 
-                    const foundValidUrls = validFrameUrls.filter(url => url !== null);
-
-                    if (foundValidUrls.length === 0) break;
-
-                    validUrls.push(...foundValidUrls);
-                    frameNumber++;
-                }
-
-                // Combine zero page and frame URLs
-                const currentValidUrls = [...zeroPageUrls, ...validUrls];
-                allValidUrls.push(...currentValidUrls);
-
-                // Update tracking
-                if (currentValidUrls.length === 0) {
-                    noImagesFoundCount++;
-                } else {
-                    noImagesFoundCount = 0;
-                }
-
-                // Move to next number range
-                currentNumber += 10;
-                setImages([...allValidUrls]);
-            } catch (err) {
-                setError('Error finding images: ' + err.message);
-                break;
-            }
-        }
-
-        setLoading(false);
-        setSearchProgress(100);
-
-        if (allValidUrls.length === 0) {
-            setError('No valid images found after searching 100 number ranges.');
-        }
-    };
-
-    return (
-        <div>
-            <div className="search-container">
-                <input 
-                    type="number" 
-                    value={startNumber}
-                    onChange={(e) => setStartNumber(e.target.value)}
-                    placeholder="Enter start number"
-                />
-                <button onClick={findValidUrls}>
-                    Find 🔎
-                </button>
-            </div>
-
-            {currentSearchRange && !loading && (
-                <div className="status-text">{currentSearchRange}</div>
-            )}
-
-            {loading && (
-                <div className="loading">
-                    Searching for images...
-                    <div className="progress-bar">
-                        <div 
-                            className="progress" 
-                            style={{width: `${searchProgress}%`}}
-                        ></div>
+                    <div className="webtoon-grid">
+                        {comicUrls.map((url, index) => (
+                            <div key={index} className="webtoon-page">
+                                <img 
+                                    src={url} 
+                                    alt={`Comic page ${index + 1}`} 
+                                    loading="lazy"
+                                />
+                            </div>
+                        ))}
                     </div>
                 </div>
-            )}
-            
-            {error && <div className="error">{error}</div>}
+            );
+        }
 
-            <div className="image-grid">
-                {images.map((url, index) => (
-                    <img 
-                        key={index} 
-                        src={`${PROXY_URL}?url=${encodeURIComponent(url)}`}
-                        alt={`Comic page ${index + 1}`} 
-                        crossOrigin="anonymous"
-                        onError={(e) => {
-                            console.error('Image load error:', url);
-                            e.target.style.display = 'none';
-                        }}
-                    />
-                ))}
-            </div>
-        </div>
-    );
-};
-
-ReactDOM.render(<ComicViewer />, document.getElementById('root'));
-</script>
+        ReactDOM.render(<ComicViewer />, document.getElementById('root'));
     </script>
 </body>
 </html>
