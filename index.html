@@ -276,6 +276,39 @@
             return { validStartNumber, validFrames, zeroPageExists, zeroPageUrls, validUrls };
         }
 
+        async function loadImages(startNumber) {
+            const imageGrid = document.getElementById('imageGrid');
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const progressBar = document.getElementById('progressBar');
+
+            imageGrid.innerHTML = '';
+            loading.style.display = 'block';
+            error.style.display = 'none';
+
+            try {
+                const { validStartNumber, validFrames, zeroPageExists, zeroPageUrls, validUrls } = await findValidStartAndFrames(startNumber);
+
+                const allUrls = zeroPageExists ? [...zeroPageUrls, ...validUrls] : validUrls;
+
+                // Display images
+                allUrls.forEach((url, index) => {
+                    const img = document.createElement('img');
+                    img.src = proxyUrl + encodeURIComponent(url);
+                    img.alt = `Frame ${index + 1}`;
+                    imageGrid.appendChild(img);
+
+                    // Update progress bar
+                    progressBar.style.width = `${((index + 1) / allUrls.length) * 100}%`;
+                });
+            } catch (err) {
+                console.error('Error loading images:', err);
+                error.style.display = 'block';
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
         document.getElementById('searchButton').addEventListener('click', () => {
             const startNumber = parseInt(document.getElementById('searchBox').value, 10);
             if (!isNaN(startNumber)) {
