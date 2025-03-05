@@ -48,10 +48,17 @@
             background-color: #cccccc;
             cursor: not-allowed;
         }
+        .results-info {
+            background-color: #f1f1f1;
+            padding: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+            border-radius: 4px;
+        }
         .image-grid {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
         }
         .image-grid img {
             width: 100%;
@@ -62,11 +69,6 @@
         }
         .image-grid img:hover {
             transform: scale(1.05);
-        }
-        .section-title {
-            margin-bottom: 15px;
-            font-size: 1.2em;
-            font-weight: bold;
         }
         #errorMessage {
             color: red;
@@ -92,9 +94,14 @@
         </div>
 
         <div id="errorMessage" style="display: none;"></div>
+        
+        <div id="resultsInfo" class="results-info" style="display: none;">
+            <p>Start Number: <span id="startNumberFound"></span></p>
+            <p>Total Frames: <span id="totalFramesFound"></span></p>
+        </div>
 
-        <div id="comicPagesSection" style="display: none;">
-            <div id="comicPagesGrid" class="image-grid"></div>
+        <div id="imagesSection" style="display: none;">
+            <div id="imagesGrid" class="image-grid"></div>
         </div>
     </div>
 
@@ -106,11 +113,24 @@
             "https://gg.asuracomic.net/storage/media/*/conversions/#.jpg"
         ];
 
+        const zeroPageBaseUrls = [
+            "https://gg.asuracomic.net/storage/media/*/conversions/00-optimized.webp",
+            "https://gg.asuracomic.net/storage/media/*/conversions/00-kopya-optimized.webp", 
+            "https://gg.asuracomic.net/storage/media/*/conversions/00-result_optimized.webp",
+            "https://gg.asuracomic.net/storage/media/*/conversions/00.jpg",
+            "https://gg.asuracomic.net/storage/media/*/conversions/0000-copy-optimized.webp", 
+            "https://gg.asuracomic.net/storage/media/*/conversions/00000-copy-optimized.webp", 
+            "https://gg.asuracomic.net/storage/media/*/conversions/000-optimized.webp"
+        ];
+
         const findButton = document.getElementById('findButton');
         const startNumberInput = document.getElementById('startNumberInput');
         const errorMessage = document.getElementById('errorMessage');
-        const comicPagesSection = document.getElementById('comicPagesSection');
-        const comicPagesGrid = document.getElementById('comicPagesGrid');
+        const resultsInfo = document.getElementById('resultsInfo');
+        const startNumberFound = document.getElementById('startNumberFound');
+        const totalFramesFound = document.getElementById('totalFramesFound');
+        const imagesSection = document.getElementById('imagesSection');
+        const imagesGrid = document.getElementById('imagesGrid');
 
         async function checkUrl(url) {
             try {
@@ -126,16 +146,23 @@
             findButton.disabled = true;
             findButton.textContent = 'Searching...';
             errorMessage.style.display = 'none';
-            comicPagesSection.style.display = 'none';
-            comicPagesGrid.innerHTML = '';
+            resultsInfo.style.display = 'none';
+            imagesSection.style.display = 'none';
+            imagesGrid.innerHTML = '';
 
             try {
                 let number = parseInt(startNumberInput.value);
                 let validStartNumber = null;
+                let validFrames = 0;
                 const validUrls = [];
+                let zeroPageUrls = [];
+
+                // Limit search to 100 iterations
+                const MAX_ITERATIONS = 100;
+                let iterations = 0;
 
                 // Find first valid start number
-                while (true) {
+                while (iterations < MAX_ITERATIONS) {
                     const urlsToCheck = baseUrls.map(url => 
                         url.replace('*', number).replace('#', '01')
                     );
@@ -144,18 +171,34 @@
 
                     if (results.some(result => result)) {
                         validStartNumber = number;
+
+                        // Check for 00 page
+                        const zeroNumber = validStartNumber - 1;
+                        const zeroUrlsToCheck = zeroPageBaseUrls.map(url => 
+                            url.replace('*', zeroNumber)
+                        );
+
+                        const zeroResults = await Promise.all(zeroUrlsToCheck.map(checkUrl));
+                        
+                        // Store valid zero page URLs
+                        zeroPageUrls = zeroUrlsToCheck.filter((_, idx) => zeroResults[idx]);
+
                         break;
                     }
                     number++;
+                    iterations++;
+                }
+
+                // Check if a valid start number was found
+                if (validStartNumber === null) {
+                    throw new Error('No valid comic pages found');
                 }
 
                 // Count valid frames and collect valid URLs
-                let currentNumber = validStartNumber;
-                let validFrames = 0;
-                while (true) {
+                while (validFrames < MAX_ITERATIONS) {
                     const frameNumber = (validFrames + 1).toString().padStart(2, '0');
                     const currentUrlsToCheck = baseUrls.map(url => 
-                        url.replace('*', currentNumber + validFrames).replace('#', frameNumber)
+                        url.replace('*', validStartNumber + validFrames).replace('#', frameNumber)
                     );
 
                     const results = await Promise.all(currentUrlsToCheck.map(checkUrl));
@@ -172,20 +215,33 @@
                 }
 
                 // Display results
-                if (validUrls.length > 0) {
-                    validUrls.forEach((url, index) => {
-                        const img = document.createElement('img');
-                        img.src = url;
-                        img.alt = `Comic page ${index + 1}`;
-                        img.loading = 'lazy';
-                        img.decoding = 'async';
-                        comicPagesGrid.appendChild(img);
-                    });
-                    comicPagesSection.style.display = 'block';
-                }
+                startNumberFound.textContent = validStartNumber;
+                totalFramesFound.textContent = validFrames;
+                resultsInfo.style.display = 'block';
+
+                // Populate zero page first if exists
+                zeroPageUrls.forEach(url => {
+                    const img = document.createElement('img');
+                    img.src = url;
+                    img.alt = '00 Page';
+                    img.loading = 'lazy';
+                    imagesGrid.appendChild(img);
+                });
+
+                // Populate comic pages grid
+                validUrls.forEach((url, index) => {
+                    const img = document.createElement('img');
+                    img.src = url;
+                    img.alt = `Comic page ${index + 1}`;
+                    img.loading = 'lazy';
+                    img.decoding = 'async';
+                    imagesGrid.appendChild(img);
+                });
+
+                imagesSection.style.display = 'block';
 
             } catch (err) {
-                errorMessage.textContent = 'An error occurred while finding comic pages.';
+                errorMessage.textContent = err.message || 'An error occurred while finding comic pages.';
                 errorMessage.style.display = 'block';
                 console.error(err);
             } finally {
