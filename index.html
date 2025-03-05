@@ -178,9 +178,6 @@
             "https://gg.asuracomic.net/storage/media/*/conversions/000-optimized.webp"
         ];
 
-        // Predefined list of series names
-        const seriesList = ["SeriesA", "SeriesB", "SeriesC"];
-
         async function checkUrl(url) {
             try {
                 const response = await fetch(proxyUrl + encodeURIComponent(url), { method: 'HEAD' });
@@ -191,13 +188,6 @@
             }
         }
 
-        async function extractTextFromImage(imageUrl) {
-            // Use Tesseract.js for OCR (Optical Character Recognition)
-            const Tesseract = window.Tesseract;
-            const { data: { text } } = await Tesseract.recognize(imageUrl);
-            return text;
-        }
-
         async function findValidStartAndFrames(startNumber) {
             let number = startNumber;
             let validStartNumber = null;
@@ -205,9 +195,14 @@
             let validUrls = [];
             let zeroPageExists = false;
             let zeroPageUrls = [];
+            let maxAttempts = 100; // Maximum number of start numbers to check for each frame
+            let attempts = 0;
 
-            // Step 1: Find the first valid start number
-            while (true) {
+            // Step 1: Find the first valid start number for frame 01
+            while (attempts < maxAttempts) {
+                attempts++; // Increment attempt counter
+
+                // Use the `01` frame for checking the start number
                 const urlsToCheck = baseUrls.map(url => url.replace('*', number).replace('#', '01'));
 
                 const results = await Promise.all(urlsToCheck.map(checkUrl));
@@ -224,93 +219,61 @@
                     zeroPageExists = zeroResults.some(result => result);
                     zeroPageUrls = zeroUrlsToCheck.filter((url, index) => zeroResults[index]);
 
-                    break;
+                    break; // Exit the loop once a valid start number is found
                 }
-                number++;
+                number++; // Increment the start number until a valid one is found
+            }
+
+            if (!validStartNumber) {
+                console.log("No valid start number found within the maximum attempts.");
+                return { validStartNumber: null, validFrames: 0, zeroPageExists: false, zeroPageUrls: [], validUrls: [] };
             }
 
             // Step 2: Count valid frames and collect valid URLs
-            number = validStartNumber;
+            let frameNumber = 1; // Start with frame 01
+            let previousFrameValid = false; // Track if the previous frame was valid
+            let currentStartNumber = validStartNumber; // Start checking from the first valid start number
 
             while (true) {
-                const frameNumber = String(validFrames + 1).padStart(2, '0');
-                const currentUrlsToCheck = baseUrls.map(url => url.replace('*', number + validFrames).replace('#', frameNumber));
+                const paddedFrameNumber = String(frameNumber).padStart(2, '0'); // Convert 1 → 01, 2 → 02, etc.
+                const currentUrlsToCheck = baseUrls.map(url => url.replace('*', currentStartNumber).replace('#', paddedFrameNumber));
 
                 const results = await Promise.all(currentUrlsToCheck.map(checkUrl));
 
-                if (!results.some(result => result)) break;
-
-                currentUrlsToCheck.forEach((url, index) => {
-                    if (results[index]) validUrls.push(url);
-                });
-
-                validFrames++;
-            }
-
-            return { validStartNumber, validFrames, zeroPageExists, zeroPageUrls, validUrls };
-        }
-
-        async function loadImages(startNumber) {
-            const imageGrid = document.getElementById('imageGrid');
-            const loading = document.getElementById('loading');
-            const error = document.getElementById('error');
-            const progressBar = document.getElementById('progressBar');
-
-            imageGrid.innerHTML = '';
-            loading.style.display = 'block';
-            error.style.display = 'none';
-
-            try {
-                const { validStartNumber, validFrames, zeroPageExists, zeroPageUrls, validUrls } = await findValidStartAndFrames(startNumber);
-
-                const allUrls = zeroPageExists ? [...zeroPageUrls, ...validUrls] : validUrls;
-
-                // Extract series name and chapter number from the 00 page
-                let seriesName = "Unknown";
-                let chapterNumber = "Unknown";
-
-                if (zeroPageExists) {
-                    const zeroPageImageUrl = zeroPageUrls[0]; // Use the first valid 00 page URL
-                    const text = await extractTextFromImage(proxyUrl + encodeURIComponent(zeroPageImageUrl));
-
-                    // Extract series name
-                    for (const series of seriesList) {
-                        if (text.includes(series)) {
-                            seriesName = series;
-                            break;
-                        }
+                // Stop if no valid frames are found for the current frame number
+                if (!results.some(result => result)) {
+                    // If the previous frame was valid (e.g., 02) but the current frame (e.g., 03) is invalid, stop
+                    if (previousFrameValid) {
+                        break;
                     }
-
-                    // Extract chapter number (assuming it's a number in the text)
-                    const chapterMatch = text.match(/\d+/);
-                    if (chapterMatch) {
-                        chapterNumber = chapterMatch[0];
+                    // If no valid frames are found at all, stop
+                    if (frameNumber === 1) {
+                        break;
                     }
                 }
 
-                // Create subpage URL
-                const subpageUrl = `https://psycho980.github.io/${seriesName}/${chapterNumber}`;
-                console.log(`Subpage URL: ${subpageUrl}`);
-
-                // Redirect to the subpage
-                window.location.href = subpageUrl;
-
-                // Display images (optional, if you want to show them before redirecting)
-                allUrls.forEach((url, index) => {
-                    const img = document.createElement('img');
-                    img.src = proxyUrl + encodeURIComponent(url);
-                    img.alt = `Frame ${index + 1}`;
-                    imageGrid.appendChild(img);
-
-                    // Update progress bar
-                    progressBar.style.width = `${((index + 1) / allUrls.length) * 100}%`;
+                // Collect valid URLs for this frame
+                currentUrlsToCheck.forEach((url, index) => {
+                    if (results[index]) {
+                        validUrls.push(url);
+                    }
                 });
-            } catch (err) {
-                console.error('Error loading images:', err);
-                error.style.display = 'block';
-            } finally {
-                loading.style.display = 'none';
+
+                // Update the previous frame validity
+                previousFrameValid = results.some(result => result);
+
+                // Move to the next frame and increment the start number
+                frameNumber++;
+                currentStartNumber++;
+                validFrames++; // Increment the valid frame count
+
+                // Stop if we've checked too many start numbers for the next frame
+                if (currentStartNumber - validStartNumber >= maxAttempts) {
+                    break;
+                }
             }
+
+            return { validStartNumber, validFrames, zeroPageExists, zeroPageUrls, validUrls };
         }
 
         document.getElementById('searchButton').addEventListener('click', () => {
@@ -319,11 +282,6 @@
                 loadImages(startNumber);
             }
         });
-    </script>
-    <!-- Include Tesseract.js for OCR -->
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.4/dist/tesseract.min.js"></script>
-</body>
-</html>
     </script>
 </body>
 </html>
