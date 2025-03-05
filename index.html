@@ -141,6 +141,8 @@
     <script type="text/babel">
         const { useState } = React;
 
+        const PROXY_URL = 'https://scythe-elfin-basilisk.glitch.me/proxy';
+
         const ComicViewer = () => {
             const [startNumber, setStartNumber] = useState('278005');
             const [images, setImages] = useState([]);
@@ -166,6 +168,7 @@
 
             const checkUrl = async (url) => {
                 try {
+                    const proxyUrl = `${PROXY_URL}?url=${encodeURIComponent(url)}`;
                     const response = await axios.head(url, { timeout: 5000 });
                     return response.status === 200;
                 } catch (error) {
@@ -251,9 +254,8 @@
                         {images.map((url, index) => (
                             <img 
                                 key={index} 
-                                src={url} 
+                                src={`${PROXY_URL}?url=${encodeURIComponent(url)}`}
                                 alt={`Comic page ${index + 1}`} 
-                                crossOrigin="anonymous"
                             />
                         ))}
                     </div>
