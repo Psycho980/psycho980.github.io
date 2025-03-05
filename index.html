@@ -48,17 +48,10 @@
             background-color: #cccccc;
             cursor: not-allowed;
         }
-        .results-info {
-            background-color: #f1f1f1;
-            padding: 10px;
-            margin-bottom: 20px;
-            text-align: center;
-            border-radius: 4px;
-        }
         .image-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
         .image-grid img {
             width: 100%;
@@ -99,25 +92,13 @@
         </div>
 
         <div id="errorMessage" style="display: none;"></div>
-        
-        <div id="resultsInfo" class="results-info" style="display: none;">
-            <p>Start Number: <span id="startNumberFound"></span></p>
-            <p>Total Frames: <span id="totalFramesFound"></span></p>
-        </div>
-
-        <div id="zeroPageSection" style="display: none;">
-            <div class="section-title">00 Page(s)</div>
-            <div id="zeroPageGrid" class="image-grid"></div>
-        </div>
 
         <div id="comicPagesSection" style="display: none;">
-            <div class="section-title">Comic Pages</div>
             <div id="comicPagesGrid" class="image-grid"></div>
         </div>
     </div>
 
     <script>
-        const proxyUrl = "https://scythe-elfin-basilisk.glitch.me//proxy?url=";
         const baseUrls = [
             "https://gg.asuracomic.net/storage/media/*/conversions/#-optimized.webp",
             "https://gg.asuracomic.net/storage/media/*/conversions/#-kopya-optimized.webp",
@@ -125,54 +106,33 @@
             "https://gg.asuracomic.net/storage/media/*/conversions/#.jpg"
         ];
 
-        const zeroPageBaseUrls = [
-            "https://gg.asuracomic.net/storage/media/*/conversions/00-optimized.webp",
-            "https://gg.asuracomic.net/storage/media/*/conversions/00-kopya-optimized.webp", 
-            "https://gg.asuracomic.net/storage/media/*/conversions/00-result_optimized.webp",
-            "https://gg.asuracomic.net/storage/media/*/conversions/00.jpg",
-            "https://gg.asuracomic.net/storage/media/*/conversions/0000-copy-optimized.webp", 
-            "https://gg.asuracomic.net/storage/media/*/conversions/00000-copy-optimized.webp", 
-            "https://gg.asuracomic.net/storage/media/*/conversions/000-optimized.webp"
-        ];
-
         const findButton = document.getElementById('findButton');
         const startNumberInput = document.getElementById('startNumberInput');
         const errorMessage = document.getElementById('errorMessage');
-        const resultsInfo = document.getElementById('resultsInfo');
-        const startNumberFound = document.getElementById('startNumberFound');
-        const totalFramesFound = document.getElementById('totalFramesFound');
-        const zeroPageSection = document.getElementById('zeroPageSection');
-        const zeroPageGrid = document.getElementById('zeroPageGrid');
         const comicPagesSection = document.getElementById('comicPagesSection');
         const comicPagesGrid = document.getElementById('comicPagesGrid');
 
-async function checkUrl(url) {
-    const proxyRequestUrl = proxyUrl + encodeURIComponent(url);  // Add the proxy URL
-    try {
-        const response = await fetch(proxyRequestUrl, { method: 'HEAD' });
-        return response.ok;
-    } catch (error) {
-        return false;
-    }
-}
+        async function checkUrl(url) {
+            try {
+                const response = await fetch(url, { method: 'HEAD' });
+                return response.ok;
+            } catch (error) {
+                return false;
+            }
+        }
 
         async function findValidStartAndFrames() {
             // Reset UI
             findButton.disabled = true;
             findButton.textContent = 'Searching...';
             errorMessage.style.display = 'none';
-            resultsInfo.style.display = 'none';
-            zeroPageSection.style.display = 'none';
             comicPagesSection.style.display = 'none';
-            zeroPageGrid.innerHTML = '';
             comicPagesGrid.innerHTML = '';
 
             try {
                 let number = parseInt(startNumberInput.value);
                 let validStartNumber = null;
-                let validFrames = 0;
                 const validUrls = [];
-                let zeroPageUrls = [];
 
                 // Find first valid start number
                 while (true) {
@@ -184,18 +144,6 @@ async function checkUrl(url) {
 
                     if (results.some(result => result)) {
                         validStartNumber = number;
-
-                        // Check for 00 page
-                        const zeroNumber = validStartNumber - 1;
-                        const zeroUrlsToCheck = zeroPageBaseUrls.map(url => 
-                            url.replace('*', zeroNumber)
-                        );
-
-                        const zeroResults = await Promise.all(zeroUrlsToCheck.map(checkUrl));
-                        
-                        // Store valid zero page URLs
-                        zeroPageUrls = zeroUrlsToCheck.filter((_, idx) => zeroResults[idx]);
-
                         break;
                     }
                     number++;
@@ -203,6 +151,7 @@ async function checkUrl(url) {
 
                 // Count valid frames and collect valid URLs
                 let currentNumber = validStartNumber;
+                let validFrames = 0;
                 while (true) {
                     const frameNumber = (validFrames + 1).toString().padStart(2, '0');
                     const currentUrlsToCheck = baseUrls.map(url => 
@@ -223,23 +172,6 @@ async function checkUrl(url) {
                 }
 
                 // Display results
-                startNumberFound.textContent = validStartNumber;
-                totalFramesFound.textContent = validFrames;
-                resultsInfo.style.display = 'block';
-
-                // Populate zero page grid
-                if (zeroPageUrls.length > 0) {
-                    zeroPageUrls.forEach(url => {
-                        const img = document.createElement('img');
-                        img.src = url;
-                        img.alt = '00 Page';
-                        img.loading = 'lazy';
-                        zeroPageGrid.appendChild(img);
-                    });
-                    zeroPageSection.style.display = 'block';
-                }
-
-                // Populate comic pages grid
                 if (validUrls.length > 0) {
                     validUrls.forEach((url, index) => {
                         const img = document.createElement('img');
