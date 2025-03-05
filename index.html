@@ -62,7 +62,7 @@
         }
         .image-grid img {
             width: 100%;
-            height: auto;
+            height: 300px;
             object-fit: cover;
             border-radius: 4px;
             transition: transform 0.3s ease;
@@ -147,9 +147,19 @@
 
         async function checkUrl(url) {
             try {
-                const response = await fetch(url, { method: 'HEAD' });
+                // Use a CORS proxy to bypass cross-origin restrictions
+                const proxyUrl = `https://cors-anywhere.herokuapp.com/${url}`;
+                
+                const response = await fetch(proxyUrl, { 
+                    method: 'HEAD',
+                    headers: {
+                        'Origin': window.location.origin
+                    }
+                });
+                
                 return response.ok;
             } catch (error) {
+                console.error(`Error checking URL ${url}:`, error);
                 return false;
             }
         }
@@ -229,7 +239,8 @@
                 if (zeroPageUrls.length > 0) {
                     zeroPageUrls.forEach(url => {
                         const img = document.createElement('img');
-                        img.src = url;
+                        // Use CORS proxy for image source
+                        img.src = `https://cors-anywhere.herokuapp.com/${url}`;
                         img.alt = '00 Page';
                         img.loading = 'lazy';
                         zeroPageGrid.appendChild(img);
@@ -241,7 +252,8 @@
                 if (validUrls.length > 0) {
                     validUrls.forEach((url, index) => {
                         const img = document.createElement('img');
-                        img.src = url;
+                        // Use CORS proxy for image source
+                        img.src = `https://cors-anywhere.herokuapp.com/${url}`;
                         img.alt = `Comic page ${index + 1}`;
                         img.loading = 'lazy';
                         img.decoding = 'async';
@@ -262,5 +274,10 @@
 
         findButton.addEventListener('click', findValidStartAndFrames);
     </script>
+    <div style="text-align: center; margin-top: 20px; color: #666;">
+        Note: You may need to first click "Request temporary access" at 
+        <a href="https://cors-anywhere.herokuapp.com/" target="_blank">cors-anywhere</a> 
+        before using this tool.
+    </div>
 </body>
 </html>
