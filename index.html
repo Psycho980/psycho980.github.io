@@ -1,68 +1,266 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Latest Updates</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet"/>
+    <title>Comic Page Finder</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            line-height: 1.6;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .search-container {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        #startNumberInput {
+            flex-grow: 1;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px 0 0 4px;
+        }
+        #findButton {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 0 4px 4px 0;
+        }
+        #findButton:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .results-info {
+            background-color: #f1f1f1;
+            padding: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+            border-radius: 4px;
+        }
+        .image-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .image-grid img {
+            width: 100%;
+            height: auto;
+            object-fit: cover;
+            border-radius: 4px;
+            transition: transform 0.3s ease;
+        }
+        .image-grid img:hover {
+            transform: scale(1.05);
+        }
+        .section-title {
+            margin-bottom: 15px;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        #errorMessage {
+            color: red;
+            background-color: #ffeeee;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+    </style>
 </head>
-<body class="bg-gray-900 text-white">
-    <div class="container mx-auto p-4">
-        <div class="flex justify-between items-center mb-4">
-            <h1 class="text-xl font-bold">Latest Updates</h1>
-            <button class="bg-purple-600 text-white px-4 py-2 rounded">VIEW ALL</button>
+<body>
+    <div class="container">
+        <h1 style="text-align: center; margin-bottom: 20px;">Comic Page Finder</h1>
+        
+        <div class="search-container">
+            <input 
+                type="text" 
+                id="startNumberInput" 
+                placeholder="Enter start number (e.g., 278005)"
+                value="278005"
+            >
+            <button id="findButton">Find 🔎</button>
         </div>
-        <div id="updates" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <!-- Updates will be dynamically added here -->
+
+        <div id="errorMessage" style="display: none;"></div>
+        
+        <div id="resultsInfo" class="results-info" style="display: none;">
+            <p>Start Number: <span id="startNumberFound"></span></p>
+            <p>Total Frames: <span id="totalFramesFound"></span></p>
+        </div>
+
+        <div id="zeroPageSection" style="display: none;">
+            <div class="section-title">00 Page(s)</div>
+            <div id="zeroPageGrid" class="image-grid"></div>
+        </div>
+
+        <div id="comicPagesSection" style="display: none;">
+            <div class="section-title">Comic Pages</div>
+            <div id="comicPagesGrid" class="image-grid"></div>
         </div>
     </div>
-    
+
     <script>
-        const seriesList = [
-            "Martial Peak",
-            "Return of the Mount Hua Sect",
-            "Solo Leveling",
-            "The Beginning After the End",
-            "Omniscient Reader's Viewpoint"
+        const baseUrls = [
+            "https://gg.asuracomic.net/storage/media/*/conversions/#-optimized.webp",
+            "https://gg.asuracomic.net/storage/media/*/conversions/#-kopya-optimized.webp",
+            "https://gg.asuracomic.net/storage/media/*/conversions/#-result_optimized.webp",
+            "https://gg.asuracomic.net/storage/media/*/conversions/#.jpg"
         ];
 
-        async function performSearch(startNumber) {
-            const validStart = await findValidStartNumber(startNumber);
-            if (validStart) {
-                const result = await findValidFrames(validStart);
-                const titlePage = await checkForChapterTitlePage(validStart);
-                if (titlePage) {
-                    const ocrResult = mockOCR(titlePage);
-                    if (seriesList.includes(ocrResult.series)) {
-                        addUpdate(ocrResult.series, ocrResult.chapter);
-                    }
-                }
+        const zeroPageBaseUrls = [
+            "https://gg.asuracomic.net/storage/media/*/conversions/00-optimized.webp",
+            "https://gg.asuracomic.net/storage/media/*/conversions/00-kopya-optimized.webp", 
+            "https://gg.asuracomic.net/storage/media/*/conversions/00-result_optimized.webp",
+            "https://gg.asuracomic.net/storage/media/*/conversions/00.jpg",
+            "https://gg.asuracomic.net/storage/media/*/conversions/0000-copy-optimized.webp", 
+            "https://gg.asuracomic.net/storage/media/*/conversions/00000-copy-optimized.webp", 
+            "https://gg.asuracomic.net/storage/media/*/conversions/000-optimized.webp"
+        ];
+
+        const findButton = document.getElementById('findButton');
+        const startNumberInput = document.getElementById('startNumberInput');
+        const errorMessage = document.getElementById('errorMessage');
+        const resultsInfo = document.getElementById('resultsInfo');
+        const startNumberFound = document.getElementById('startNumberFound');
+        const totalFramesFound = document.getElementById('totalFramesFound');
+        const zeroPageSection = document.getElementById('zeroPageSection');
+        const zeroPageGrid = document.getElementById('zeroPageGrid');
+        const comicPagesSection = document.getElementById('comicPagesSection');
+        const comicPagesGrid = document.getElementById('comicPagesGrid');
+
+        async function checkUrl(url) {
+            try {
+                const response = await fetch(url, { method: 'HEAD' });
+                return response.ok;
+            } catch (error) {
+                return false;
             }
         }
 
-        function addUpdate(series, chapter) {
-            const updatesContainer = document.getElementById("updates");
-            const updateDiv = document.createElement("div");
-            updateDiv.className = "flex space-x-4";
-            updateDiv.innerHTML = `
-                <img src="https://via.placeholder.com/100x150" class="w-24 h-36 object-cover" alt="Cover image of ${series}">
-                <div>
-                    <h2 class="text-lg font-bold">${series}</h2>
-                    <ul>
-                        <li class="text-purple-400">
-                            <a href="#">Chapter ${chapter}</a>
-                            <span class="text-gray-400">Just now</span>
-                        </li>
-                    </ul>
-                </div>
-            `;
-            updatesContainer.appendChild(updateDiv);
+        async function findValidStartAndFrames() {
+            // Reset UI
+            findButton.disabled = true;
+            findButton.textContent = 'Searching...';
+            errorMessage.style.display = 'none';
+            resultsInfo.style.display = 'none';
+            zeroPageSection.style.display = 'none';
+            comicPagesSection.style.display = 'none';
+            zeroPageGrid.innerHTML = '';
+            comicPagesGrid.innerHTML = '';
+
+            try {
+                let number = parseInt(startNumberInput.value);
+                let validStartNumber = null;
+                let validFrames = 0;
+                const validUrls = [];
+                let zeroPageUrls = [];
+
+                // Find first valid start number
+                while (true) {
+                    const urlsToCheck = baseUrls.map(url => 
+                        url.replace('*', number).replace('#', '01')
+                    );
+
+                    const results = await Promise.all(urlsToCheck.map(checkUrl));
+
+                    if (results.some(result => result)) {
+                        validStartNumber = number;
+
+                        // Check for 00 page
+                        const zeroNumber = validStartNumber - 1;
+                        const zeroUrlsToCheck = zeroPageBaseUrls.map(url => 
+                            url.replace('*', zeroNumber)
+                        );
+
+                        const zeroResults = await Promise.all(zeroUrlsToCheck.map(checkUrl));
+                        
+                        // Store valid zero page URLs
+                        zeroPageUrls = zeroUrlsToCheck.filter((_, idx) => zeroResults[idx]);
+
+                        break;
+                    }
+                    number++;
+                }
+
+                // Count valid frames and collect valid URLs
+                let currentNumber = validStartNumber;
+                while (true) {
+                    const frameNumber = (validFrames + 1).toString().padStart(2, '0');
+                    const currentUrlsToCheck = baseUrls.map(url => 
+                        url.replace('*', currentNumber + validFrames).replace('#', frameNumber)
+                    );
+
+                    const results = await Promise.all(currentUrlsToCheck.map(checkUrl));
+
+                    // Stop when all patterns fail
+                    if (!results.some(result => result)) break;
+
+                    // Collect valid URLs
+                    currentUrlsToCheck.forEach((url, idx) => {
+                        if (results[idx]) validUrls.push(url);
+                    });
+
+                    validFrames++;
+                }
+
+                // Display results
+                startNumberFound.textContent = validStartNumber;
+                totalFramesFound.textContent = validFrames;
+                resultsInfo.style.display = 'block';
+
+                // Populate zero page grid
+                if (zeroPageUrls.length > 0) {
+                    zeroPageUrls.forEach(url => {
+                        const img = document.createElement('img');
+                        img.src = url;
+                        img.alt = '00 Page';
+                        img.loading = 'lazy';
+                        zeroPageGrid.appendChild(img);
+                    });
+                    zeroPageSection.style.display = 'block';
+                }
+
+                // Populate comic pages grid
+                if (validUrls.length > 0) {
+                    validUrls.forEach((url, index) => {
+                        const img = document.createElement('img');
+                        img.src = url;
+                        img.alt = `Comic page ${index + 1}`;
+                        img.loading = 'lazy';
+                        img.decoding = 'async';
+                        comicPagesGrid.appendChild(img);
+                    });
+                    comicPagesSection.style.display = 'block';
+                }
+
+            } catch (err) {
+                errorMessage.textContent = 'An error occurred while finding comic pages.';
+                errorMessage.style.display = 'block';
+                console.error(err);
+            } finally {
+                findButton.disabled = false;
+                findButton.textContent = 'Find 🔎';
+            }
         }
 
-        document.addEventListener("DOMContentLoaded", () => {
-            performSearch(276559);
-        });
+        findButton.addEventListener('click', findValidStartAndFrames);
     </script>
 </body>
 </html>
