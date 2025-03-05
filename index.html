@@ -126,6 +126,20 @@
             margin-top: 20px;
         }
 
+        .progress-bar {
+            width: 100%;
+            background-color: var(--bg-secondary);
+            border-radius: 4px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+
+        .progress {
+            height: 5px;
+            background-color: var(--accent-color);
+            transition: width 0.5s ease;
+        }
+
         @media (max-width: 600px) {
             .comic-container {
                 padding: 10px;
@@ -152,51 +166,105 @@
             const [loading, setLoading] = React.useState(false);
             const [error, setError] = React.useState(null);
             const [startNumber, setStartNumber] = React.useState('');
+            const [progress, setProgress] = React.useState(0);
+            const [message, setMessage] = React.useState('');
+
+            const checkUrlExists = async (url) => {
+                try {
+                    const response = await axios.head(url);
+                    return response.status === 200;
+                } catch (err) {
+                    return false;
+                }
+            };
 
             const fetchComicImages = async () => {
-                // Base URL patterns (you can customize these)
+                if (!startNumber || isNaN(parseInt(startNumber))) {
+                    setError('Please enter a valid number');
+                    return;
+                }
+
+                const num = parseInt(startNumber);
+                
+                // Base URL patterns for regular pages
                 const baseUrls = [
-                    `https://gg.asuracomic.net/storage/media/${startNumber}/conversions/#-optimized.webp`,
-                    `https://gg.asuracomic.net/storage/media/${startNumber}/conversions/#-kopya-optimized.webp`,
-                    `https://gg.asuracomic.net/storage/media/${startNumber}/conversions/#.jpg`
+                    `https://gg.asuracomic.net/storage/media/${num}/conversions/#-optimized.webp`,
+                    `https://gg.asuracomic.net/storage/media/${num}/conversions/#-kopya-optimized.webp`,
+                    `https://gg.asuracomic.net/storage/media/${num}/conversions/#-result_optimized.webp`,
+                    `https://gg.asuracomic.net/storage/media/${num}/conversions/#.jpg`
+                ];
+
+                // Base URL patterns for zero page
+                const zeroPageUrls = [
+                    `https://gg.asuracomic.net/storage/media/${num}/conversions/00-optimized.webp`,
+                    `https://gg.asuracomic.net/storage/media/${num}/conversions/00-kopya-optimized.webp`,
+                    `https://gg.asuracomic.net/storage/media/${num}/conversions/00-result_optimized.webp`,
+                    `https://gg.asuracomic.net/storage/media/${num}/conversions/00.jpg`,
+                    `https://gg.asuracomic.net/storage/media/${num}/conversions/0000-copy-optimized.webp`,
+                    `https://gg.asuracomic.net/storage/media/${num}/conversions/00000-copy-optimized.webp`,
+                    `https://gg.asuracomic.net/storage/media/${num}/conversions/000-optimized.webp`
                 ];
 
                 setLoading(true);
                 setError(null);
+                setComicUrls([]);
+                setProgress(0);
 
                 try {
                     const urls = [];
+                    
+                    // Check for zero page first
+                    setMessage('Checking for cover/zero page...');
+                    for (const zeroUrl of zeroPageUrls) {
+                        if (await checkUrlExists(zeroUrl)) {
+                            urls.push(zeroUrl);
+                            break;
+                        }
+                    }
+                    
+                    // Then check for regular pages
                     let frameNumber = 1;
-
-                    while (true) {
+                    let consecutiveFailures = 0;
+                    const MAX_CONSECUTIVE_FAILURES = 3; // Stop after 3 consecutive missing pages
+                    
+                    while (consecutiveFailures < MAX_CONSECUTIVE_FAILURES) {
+                        setMessage(`Checking page ${frameNumber}...`);
+                        
                         const frameUrls = baseUrls.map(url => 
                             url.replace('#', frameNumber.toString().padStart(2, '0'))
                         );
 
-                        // Try each URL pattern
+                        // Try each URL pattern for this frame
                         let validUrl = null;
                         for (const testUrl of frameUrls) {
-                            try {
-                                const response = await axios.head(testUrl);
-                                if (response.status === 200) {
-                                    validUrl = testUrl;
-                                    break;
-                                }
-                            } catch (err) {
-                                // URL not valid, continue to next
+                            if (await checkUrlExists(testUrl)) {
+                                validUrl = testUrl;
+                                break;
                             }
                         }
 
-                        if (!validUrl) break;
+                        if (validUrl) {
+                            urls.push(validUrl);
+                            consecutiveFailures = 0; // Reset counter on success
+                        } else {
+                            consecutiveFailures++;
+                        }
 
-                        urls.push(validUrl);
                         frameNumber++;
+                        setProgress(Math.min(100, (frameNumber / 50) * 100)); // Assuming max 50 pages
                     }
 
-                    setComicUrls(urls);
+                    if (urls.length === 0) {
+                        setError('No comic pages found. Please check the start number.');
+                    } else {
+                        setComicUrls(urls);
+                        setMessage(`Found ${urls.length} pages!`);
+                    }
+                    
                     setLoading(false);
+                    setProgress(100);
                 } catch (err) {
-                    setError('Failed to fetch comic images');
+                    setError('Failed to fetch comic images: ' + err.message);
                     setLoading(false);
                 }
             };
@@ -209,11 +277,22 @@
                             placeholder="Enter comic start number" 
                             value={startNumber}
                             onChange={(e) => setStartNumber(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && fetchComicImages()}
                         />
                         <button onClick={fetchComicImages}>Load Comic</button>
                     </div>
 
-                    {loading && <div className="loading">Loading comic pages...</div>}
+                    {loading && (
+                        <div className="loading">
+                            {message}
+                            <div className="progress-bar">
+                                <div 
+                                    className="progress" 
+                                    style={{ width: `${progress}%` }}
+                                />
+                            </div>
+                        </div>
+                    )}
                     
                     {error && <div className="error">{error}</div>}
 
@@ -222,7 +301,7 @@
                             <div key={index} className="webtoon-page">
                                 <img 
                                     src={url} 
-                                    alt={`Comic page ${index + 1}`} 
+                                    alt={`Comic page ${index}`} 
                                     loading="lazy"
                                 />
                             </div>
