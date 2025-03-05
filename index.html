@@ -228,29 +228,41 @@ async function checkUrl(url) {
                 resultsInfo.style.display = 'block';
 
                 // Populate zero page grid
-                if (zeroPageUrls.length > 0) {
-                    zeroPageUrls.forEach(url => {
-                        const img = document.createElement('img');
-                        img.src = url;
-                        img.alt = '00 Page';
-                        img.loading = 'lazy';
-                        zeroPageGrid.appendChild(img);
-                    });
-                    zeroPageSection.style.display = 'block';
-                }
+                zeroPageUrls.forEach(url => {
+               const container = document.createElement('div');
+    container.className = 'w-full mx-auto center';
+
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = '00 Page';
+    img.className = 'object-cover mx-auto';
+    img.decoding = 'async';
+    img.fetchPriority = 'high';
+    img.loading = 'eager';
+
+    container.appendChild(img);
+    zeroPageGrid.appendChild(container);
+});
+
 
                 // Populate comic pages grid
-                if (validUrls.length > 0) {
-                    validUrls.forEach((url, index) => {
-                        const img = document.createElement('img');
-                        img.src = url;
-                        img.alt = `Comic page ${index + 1}`;
-                        img.loading = 'lazy';
-                        img.decoding = 'async';
-                        comicPagesGrid.appendChild(img);
-                    });
-                    comicPagesSection.style.display = 'block';
-                }
+validUrls.forEach((url, index) => {
+    const container = document.createElement('div');
+    container.className = 'w-full mx-auto center';
+
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = `Chapter page ${index + 1}`;
+    img.className = 'object-cover mx-auto';
+    img.decoding = 'async';
+    img.fetchPriority = 'high';
+    img.loading = 'lazy';
+
+    container.appendChild(img);
+    comicPagesGrid.appendChild(container);
+});
+
+
 
             } catch (err) {
                 errorMessage.textContent = 'An error occurred while finding comic pages.';
