@@ -140,6 +140,23 @@
             transition: width 0.5s ease;
         }
 
+        .options-container {
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: var(--bg-secondary);
+            border-radius: 8px;
+        }
+
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .checkbox-container input {
+            margin-right: 10px;
+        }
+
         @media (max-width: 600px) {
             .comic-container {
                 padding: 10px;
@@ -168,11 +185,31 @@
             const [startNumber, setStartNumber] = React.useState('');
             const [progress, setProgress] = React.useState(0);
             const [message, setMessage] = React.useState('');
+            const [useProxy, setUseProxy] = React.useState(true);
+            
+            // Public CORS proxies for testing
+            const corsProxies = [
+                "https://corsproxy.io/?",
+                "https://cors-anywhere.herokuapp.com/",
+                "https://api.allorigins.win/raw?url="
+            ];
+            
+            const [proxyIndex, setProxyIndex] = React.useState(0);
+
+            const addProxyToUrl = (url) => {
+                if (!useProxy) return url;
+                return corsProxies[proxyIndex] + encodeURIComponent(url);
+            };
 
             const checkUrlExists = async (url) => {
                 try {
-                    const response = await axios.head(url);
-                    return response.status === 200;
+                    // For checking if URL exists, we need a proxy
+                    const proxyUrl = addProxyToUrl(url);
+                    const response = await fetch(proxyUrl, { 
+                        method: 'HEAD',
+                        mode: 'cors'
+                    });
+                    return response.ok;
                 } catch (err) {
                     return false;
                 }
@@ -255,7 +292,7 @@
                     }
 
                     if (urls.length === 0) {
-                        setError('No comic pages found. Please check the start number.');
+                        setError('No comic pages found. Please check the start number or try a different CORS proxy.');
                     } else {
                         setComicUrls(urls);
                         setMessage(`Found ${urls.length} pages!`);
@@ -269,8 +306,44 @@
                 }
             };
 
+            const handleProxyChange = () => {
+                setProxyIndex((prevIndex) => (prevIndex + 1) % corsProxies.length);
+            };
+
             return (
                 <div className="comic-container">
+                    <div className="options-container">
+                        <div className="checkbox-container">
+                            <input
+                                type="checkbox"
+                                id="useProxy"
+                                checked={useProxy}
+                                onChange={() => setUseProxy(!useProxy)}
+                            />
+                            <label htmlFor="useProxy">Use CORS Proxy (required to bypass CORS restrictions)</label>
+                        </div>
+                        
+                        {useProxy && (
+                            <div>
+                                <p>Current proxy: {corsProxies[proxyIndex]}</p>
+                                <button 
+                                    onClick={handleProxyChange}
+                                    style={{ 
+                                        padding: '5px 10px', 
+                                        marginTop: '5px',
+                                        backgroundColor: 'var(--accent-color)',
+                                        color: 'var(--bg-primary)',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Try a different proxy
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
                     <div className="search-container">
                         <input 
                             type="text" 
@@ -300,7 +373,7 @@
                         {comicUrls.map((url, index) => (
                             <div key={index} className="webtoon-page">
                                 <img 
-                                    src={url} 
+                                    src={useProxy ? addProxyToUrl(url) : url} 
                                     alt={`Comic page ${index}`} 
                                     loading="lazy"
                                 />
