@@ -62,7 +62,7 @@
         }
         .image-grid img {
             width: 100%;
-            height: 300px;
+            height: auto;
             object-fit: cover;
             border-radius: 4px;
             transition: transform 0.3s ease;
@@ -117,6 +117,7 @@
     </div>
 
     <script>
+        const proxyUrl = "https://scythe-elfin-basilisk.glitch.me//proxy?url=";
         const baseUrls = [
             "https://gg.asuracomic.net/storage/media/*/conversions/#-optimized.webp",
             "https://gg.asuracomic.net/storage/media/*/conversions/#-kopya-optimized.webp",
@@ -145,6 +146,16 @@
         const comicPagesSection = document.getElementById('comicPagesSection');
         const comicPagesGrid = document.getElementById('comicPagesGrid');
 
+async function checkUrl(url) {
+    const proxyRequestUrl = proxyUrl + encodeURIComponent(url);  // Add the proxy URL
+    try {
+        const response = await fetch(proxyRequestUrl, { method: 'HEAD' });
+        return response.ok;
+    } catch (error) {
+        return false;
+    }
+}
+
         async function findValidStartAndFrames() {
             // Reset UI
             findButton.disabled = true;
@@ -169,16 +180,9 @@
                         url.replace('*', number).replace('#', '01')
                     );
 
-                    const validUrlFound = urlsToCheck.find(url => {
-                        const img = new Image();
-                        img.src = url;
-                        return new Promise((resolve) => {
-                            img.onload = () => resolve(true);
-                            img.onerror = () => resolve(false);
-                        });
-                    });
+                    const results = await Promise.all(urlsToCheck.map(checkUrl));
 
-                    if (validUrlFound) {
+                    if (results.some(result => result)) {
                         validStartNumber = number;
 
                         // Check for 00 page
@@ -187,15 +191,10 @@
                             url.replace('*', zeroNumber)
                         );
 
-                        // Find valid zero page URLs
-                        zeroPageUrls = await Promise.all(zeroUrlsToCheck.map(url => {
-                            return new Promise((resolve) => {
-                                const img = new Image();
-                                img.onload = () => resolve(url);
-                                img.onerror = () => resolve(null);
-                                img.src = url;
-                            });
-                        })).then(urls => urls.filter(url => url !== null));
+                        const zeroResults = await Promise.all(zeroUrlsToCheck.map(checkUrl));
+                        
+                        // Store valid zero page URLs
+                        zeroPageUrls = zeroUrlsToCheck.filter((_, idx) => zeroResults[idx]);
 
                         break;
                     }
@@ -210,19 +209,16 @@
                         url.replace('*', currentNumber + validFrames).replace('#', frameNumber)
                     );
 
-                    const validCurrentUrls = await Promise.all(currentUrlsToCheck.map(url => {
-                        return new Promise((resolve) => {
-                            const img = new Image();
-                            img.onload = () => resolve(url);
-                            img.onerror = () => resolve(null);
-                            img.src = url;
-                        });
-                    })).then(urls => urls.filter(url => url !== null));
+                    const results = await Promise.all(currentUrlsToCheck.map(checkUrl));
 
-                    // Stop when no valid URLs found
-                    if (validCurrentUrls.length === 0) break;
+                    // Stop when all patterns fail
+                    if (!results.some(result => result)) break;
 
-                    validUrls.push(...validCurrentUrls);
+                    // Collect valid URLs
+                    currentUrlsToCheck.forEach((url, idx) => {
+                        if (results[idx]) validUrls.push(url);
+                    });
+
                     validFrames++;
                 }
 
