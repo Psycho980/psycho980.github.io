@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Webtoon Image Viewer</title>
     <style>
-        /* Your provided CSS here */
         :root {
             --bg-primary: #121212;
             --bg-secondary: #1E1E1E;
@@ -161,6 +160,7 @@
     </div>
 
     <script>
+        const proxyUrl = 'https://scythe-elfin-basilisk.glitch.me/proxy?url=';
         const baseUrls = [
             "https://gg.asuracomic.net/storage/media/*/conversions/#-optimized.webp",
             "https://gg.asuracomic.net/storage/media/*/conversions/#-kopya-optimized.webp",
@@ -180,7 +180,7 @@
 
         async function checkUrl(url) {
             try {
-                const response = await fetch(url, { method: 'HEAD' });
+                const response = await fetch(proxyUrl + encodeURIComponent(url), { method: 'HEAD' });
                 return response.status === 200;
             } catch (error) {
                 console.error(`Error checking URL ${url}:`, error);
@@ -257,7 +257,7 @@
 
                 allUrls.forEach((url, index) => {
                     const img = document.createElement('img');
-                    img.src = url;
+                    img.src = proxyUrl + encodeURIComponent(url); // Use the proxy URL
                     img.alt = `Frame ${index + 1}`;
                     imageGrid.appendChild(img);
 
