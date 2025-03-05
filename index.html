@@ -77,6 +77,12 @@
             margin-bottom: 20px;
             border-radius: 4px;
         }
+        #loadingIndicator {
+            text-align: center;
+            font-size: 18px;
+            margin: 20px 0;
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -100,27 +106,34 @@
             <p>Total Frames: <span id="totalFramesFound"></span></p>
         </div>
 
+        <div id="loadingIndicator" style="display: none;">
+            Searching and loading images...
+        </div>
+
         <div id="imagesSection" style="display: none;">
             <div id="imagesGrid" class="image-grid"></div>
         </div>
     </div>
 
     <script>
+        const PROXY_URL = 'https://scythe-elfin-basilisk.glitch.me/';
+        const ORIGIN_URL = 'https://gg.asuracomic.net';
+
         const baseUrls = [
-            "https://gg.asuracomic.net/storage/media/*/conversions/#-optimized.webp",
-            "https://gg.asuracomic.net/storage/media/*/conversions/#-kopya-optimized.webp",
-            "https://gg.asuracomic.net/storage/media/*/conversions/#-result_optimized.webp",
-            "https://gg.asuracomic.net/storage/media/*/conversions/#.jpg"
+            "/storage/media/*/conversions/#-optimized.webp",
+            "/storage/media/*/conversions/#-kopya-optimized.webp",
+            "/storage/media/*/conversions/#-result_optimized.webp",
+            "/storage/media/*/conversions/#.jpg"
         ];
 
         const zeroPageBaseUrls = [
-            "https://gg.asuracomic.net/storage/media/*/conversions/00-optimized.webp",
-            "https://gg.asuracomic.net/storage/media/*/conversions/00-kopya-optimized.webp", 
-            "https://gg.asuracomic.net/storage/media/*/conversions/00-result_optimized.webp",
-            "https://gg.asuracomic.net/storage/media/*/conversions/00.jpg",
-            "https://gg.asuracomic.net/storage/media/*/conversions/0000-copy-optimized.webp", 
-            "https://gg.asuracomic.net/storage/media/*/conversions/00000-copy-optimized.webp", 
-            "https://gg.asuracomic.net/storage/media/*/conversions/000-optimized.webp"
+            "/storage/media/*/conversions/00-optimized.webp",
+            "/storage/media/*/conversions/00-kopya-optimized.webp", 
+            "/storage/media/*/conversions/00-result_optimized.webp",
+            "/storage/media/*/conversions/00.jpg",
+            "/storage/media/*/conversions/0000-copy-optimized.webp", 
+            "/storage/media/*/conversions/00000-copy-optimized.webp", 
+            "/storage/media/*/conversions/000-optimized.webp"
         ];
 
         const findButton = document.getElementById('findButton');
@@ -131,10 +144,12 @@
         const totalFramesFound = document.getElementById('totalFramesFound');
         const imagesSection = document.getElementById('imagesSection');
         const imagesGrid = document.getElementById('imagesGrid');
+        const loadingIndicator = document.getElementById('loadingIndicator');
 
         async function checkUrl(url) {
             try {
-                const response = await fetch(url, { method: 'HEAD' });
+                const proxyUrl = PROXY_URL + url;
+                const response = await fetch(proxyUrl, { method: 'HEAD' });
                 return response.ok;
             } catch (error) {
                 return false;
@@ -148,6 +163,7 @@
             errorMessage.style.display = 'none';
             resultsInfo.style.display = 'none';
             imagesSection.style.display = 'none';
+            loadingIndicator.style.display = 'block';
             imagesGrid.innerHTML = '';
 
             try {
@@ -164,7 +180,7 @@
                 // Find first valid start number
                 while (iterations < MAX_ITERATIONS) {
                     const urlsToCheck = baseUrls.map(url => 
-                        url.replace('*', number).replace('#', '01')
+                        ORIGIN_URL + url.replace('*', number).replace('#', '01')
                     );
 
                     const results = await Promise.all(urlsToCheck.map(checkUrl));
@@ -175,7 +191,7 @@
                         // Check for 00 page
                         const zeroNumber = validStartNumber - 1;
                         const zeroUrlsToCheck = zeroPageBaseUrls.map(url => 
-                            url.replace('*', zeroNumber)
+                            ORIGIN_URL + url.replace('*', zeroNumber)
                         );
 
                         const zeroResults = await Promise.all(zeroUrlsToCheck.map(checkUrl));
@@ -198,7 +214,7 @@
                 while (validFrames < MAX_ITERATIONS) {
                     const frameNumber = (validFrames + 1).toString().padStart(2, '0');
                     const currentUrlsToCheck = baseUrls.map(url => 
-                        url.replace('*', validStartNumber + validFrames).replace('#', frameNumber)
+                        ORIGIN_URL + url.replace('*', validStartNumber + validFrames).replace('#', frameNumber)
                     );
 
                     const results = await Promise.all(currentUrlsToCheck.map(checkUrl));
@@ -218,11 +234,12 @@
                 startNumberFound.textContent = validStartNumber;
                 totalFramesFound.textContent = validFrames;
                 resultsInfo.style.display = 'block';
+                loadingIndicator.style.display = 'none';
 
                 // Populate zero page first if exists
                 zeroPageUrls.forEach(url => {
                     const img = document.createElement('img');
-                    img.src = url;
+                    img.src = PROXY_URL + url;
                     img.alt = '00 Page';
                     img.loading = 'lazy';
                     imagesGrid.appendChild(img);
@@ -231,7 +248,7 @@
                 // Populate comic pages grid
                 validUrls.forEach((url, index) => {
                     const img = document.createElement('img');
-                    img.src = url;
+                    img.src = PROXY_URL + url;
                     img.alt = `Comic page ${index + 1}`;
                     img.loading = 'lazy';
                     img.decoding = 'async';
@@ -243,6 +260,7 @@
             } catch (err) {
                 errorMessage.textContent = err.message || 'An error occurred while finding comic pages.';
                 errorMessage.style.display = 'block';
+                loadingIndicator.style.display = 'none';
                 console.error(err);
             } finally {
                 findButton.disabled = false;
