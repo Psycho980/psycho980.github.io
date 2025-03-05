@@ -178,9 +178,6 @@
             "https://gg.asuracomic.net/storage/media/*/conversions/000-optimized.webp"
         ];
 
-        // Predefined list of series names
-        const seriesList = ["SeriesA", "SeriesB", "SeriesC"];
-
         async function checkUrl(url) {
             try {
                 const response = await fetch(proxyUrl + encodeURIComponent(url), { method: 'HEAD' });
@@ -189,13 +186,6 @@
                 console.error(`Error checking URL ${url}:`, error);
                 return false;
             }
-        }
-
-        async function extractTextFromImage(imageUrl) {
-            // Use Tesseract.js for OCR (Optical Character Recognition)
-            const Tesseract = window.Tesseract;
-            const { data: { text } } = await Tesseract.recognize(imageUrl);
-            return text;
         }
 
         async function findValidStartAndFrames(startNumber) {
@@ -301,46 +291,23 @@
 
                 const allUrls = zeroPageExists ? [...zeroPageUrls, ...validUrls] : validUrls;
 
-                // Extract series name and chapter number from the 00 page
-                let seriesName = "Unknown";
-                let chapterNumber = "Unknown";
-
-                if (zeroPageExists) {
-                    const zeroPageImageUrl = zeroPageUrls[0]; // Use the first valid 00 page URL
-                    const text = await extractTextFromImage(proxyUrl + encodeURIComponent(zeroPageImageUrl));
-
-                    // Extract series name
-                    for (const series of seriesList) {
-                        if (text.includes(series)) {
-                            seriesName = series;
-                            break;
-                        }
-                    }
-
-                    // Extract chapter number (assuming it's a number in the text)
-                    const chapterMatch = text.match(/\d+/);
-                    if (chapterMatch) {
-                        chapterNumber = chapterMatch[0];
-                    }
-                }
-
-                // Create subpage URL
-                const subpageUrl = `https://psycho980.github.io/${seriesName}/${chapterNumber}`;
-                console.log(`Subpage URL: ${subpageUrl}`);
-
-                // Redirect to the subpage
-                window.location.href = subpageUrl;
-
-                // Display images (optional, if you want to show them before redirecting)
-                allUrls.forEach((url, index) => {
+                // Display images
+                for (const url of allUrls) {
                     const img = document.createElement('img');
+                    img.crossOrigin = 'anonymous'; // Enable CORS
                     img.src = proxyUrl + encodeURIComponent(url);
-                    img.alt = `Frame ${index + 1}`;
+                    img.alt = `Frame ${validUrls.indexOf(url) + 1}`;
                     imageGrid.appendChild(img);
 
+                    // Wait for the image to load before proceeding
+                    await new Promise((resolve) => {
+                        img.onload = resolve;
+                        img.onerror = resolve; // Handle errors gracefully
+                    });
+
                     // Update progress bar
-                    progressBar.style.width = `${((index + 1) / allUrls.length) * 100}%`;
-                });
+                    progressBar.style.width = `${((allUrls.indexOf(url) + 1) / allUrls.length) * 100}%`;
+                }
             } catch (err) {
                 console.error('Error loading images:', err);
                 error.style.display = 'block';
@@ -356,7 +323,5 @@
             }
         });
     </script>
-    <!-- Include Tesseract.js for OCR -->
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.4/dist/tesseract.min.js"></script>
 </body>
 </html>
